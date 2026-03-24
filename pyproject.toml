@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "the-director"
+version = "2.0.0"
+description = "World-class pre-production AI agent for video pipelines — Pydantic-enforced contracts, state-machine intake, evaluator-optimizer loop"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Sufian" },
+]
+keywords = [
+    "ai-agent",
+    "pre-production",
+    "video-pipeline",
+    "pydantic",
+    "claude-agent-sdk",
+    "motion-graphics",
+    "remotion",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+sdk = [
+    "claude-agent-sdk>=0.1.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/sufianmypa1203-oss/the-director"
+Documentation = "https://github.com/sufianmypa1203-oss/the-director#readme"
+Repository = "https://github.com/sufianmypa1203-oss/the-director"
+Issues = "https://github.com/sufianmypa1203-oss/the-director/issues"
+
+[project.scripts]
+director = "director.agent:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/director", "src/pipeline"]

@@ -1,0 +1,126 @@
+{
+  "projectId": "subscription-creep",
+  "compositionName": "SubscriptionCreep",
+  "totalDuration": 450,
+  "fps": 30,
+  "canvas": {
+    "width": 1080,
+    "height": 1920
+  },
+  "narrativeArc": "shock-build-resolve",
+  "framework": "PAS",
+  "scenes": [
+    {
+      "id": "scene-1",
+      "name": "The Hook",
+      "role": "hook",
+      "startFrame": 0,
+      "endFrame": 90,
+      "durationFrames": 90,
+      "durationSeconds": 3.0,
+      "emotionalBeat": "alarm",
+      "emotionArc": "curiosity → shock",
+      "colorTemperature": "warm",
+      "focalPoint": "hero-number",
+      "focalIsolation": "unique-scale",
+      "heroText": "$4,652 leaked this year",
+      "subText": "From subscriptions you forgot",
+      "prototypeFile": "Scene1_Hook.html",
+      "maxInfoItems": 2
+    },
+    {
+      "id": "scene-2",
+      "name": "The Reveal",
+      "role": "agitate",
+      "startFrame": 90,
+      "endFrame": 180,
+      "durationFrames": 90,
+      "durationSeconds": 3.0,
+      "emotionalBeat": "dread",
+      "emotionArc": "shock → anxiety",
+      "colorTemperature": "cool",
+      "focalPoint": "subscription-stack",
+      "focalIsolation": "motion-contrast",
+      "heroText": "Three apps draining you",
+      "subText": "$38/mo you never noticed",
+      "prototypeFile": "Scene2_Reveal.html",
+      "maxInfoItems": 3
+    },
+    {
+      "id": "scene-3",
+      "name": "The Compound",
+      "role": "agitate",
+      "startFrame": 180,
+      "endFrame": 270,
+      "durationFrames": 90,
+      "durationSeconds": 3.0,
+      "emotionalBeat": "intensifying-dread",
+      "emotionArc": "anxiety → frustration",
+      "colorTemperature": "warm",
+      "focalPoint": "rising-counter",
+      "focalIsolation": "unique-hue",
+      "heroText": "That compounds to $456",
+      "subText": "Every year without action",
+      "prototypeFile": "Scene3_Compound.html",
+      "maxInfoItems": 2
+    },
+    {
+      "id": "scene-4",
+      "name": "The Solution",
+      "role": "solution",
+      "startFrame": 270,
+      "endFrame": 360,
+      "durationFrames": 90,
+      "durationSeconds": 3.0,
+      "emotionalBeat": "relief",
+      "emotionArc": "frustration → hope",
+      "colorTemperature": "cool",
+      "focalPoint": "app-interface",
+      "focalIsolation": "unique-scale",
+      "heroText": "Track it in seconds",
+      "subText": "One tap to find every charge",
+      "prototypeFile": "Scene4_Solution.html",
+      "maxInfoItems": 3
+    },
+    {
+      "id": "scene-5",
+      "name": "The CTA",
+      "role": "cta",
+      "startFrame": 360,
+      "endFrame": 450,
+      "durationFrames": 90,
+      "durationSeconds": 3.0,
+      "emotionalBeat": "empowerment",
+      "emotionArc": "hope → confidence",
+      "colorTemperature": "neutral",
+      "focalPoint": "cta-button",
+      "focalIsolation": "unique-hue",
+      "heroText": "Try it free",
+      "subText": "Link in bio",
+      "prototypeFile": "Scene5_CTA.html",
+      "maxInfoItems": 2
+    }
+  ],
+  "transitions": [
+    {
+      "from": "scene-1",
+      "to": "scene-2",
+      "narrativeReason": "From the shock of the leaked amount to revealing the specific subscriptions causing the drain"
+    },
+    {
+      "from": "scene-2",
+      "to": "scene-3",
+      "narrativeReason": "From individual subscription costs to the compounding annual impact — making the pain bigger"
+    },
+    {
+      "from": "scene-3",
+      "to": "scene-4",
+      "narrativeReason": "From peak frustration at compounding waste to the relief of a simple tracking solution"
+    },
+    {
+      "from": "scene-4",
+      "to": "scene-5",
+      "narrativeReason": "From understanding the solution to taking immediate action with a low-friction CTA"
+    }
+  ]
+}
