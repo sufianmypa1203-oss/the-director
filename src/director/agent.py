@@ -91,13 +91,14 @@ class DirectorAgent:
 
     version = __version__
 
-    def __init__(self, project_id: str | None = None):
+    def __init__(self, project_id: str | None = None, specs_dir: str | Path | None = None):
         self.project_id    = project_id
+        self.specs_dir     = Path(specs_dir) if specs_dir else SPECS_DIR
         self.intake_state  = IntakeState()
-        self.validator     = ArtifactValidator()
+        self.validator     = ArtifactValidator(specs_dir=self.specs_dir)
         self.hooks         = LifecycleHooks()
         self.conversation: list[dict] = []
-        SPECS_DIR.mkdir(exist_ok=True)
+        self.specs_dir.mkdir(exist_ok=True)
 
         # Register default hooks
         self._register_default_hooks()
@@ -188,8 +189,29 @@ class DirectorAgent:
                     yield f"⚠️ {len(non_critical)} non-critical issue(s) noted (see report above).\n"
                     yield self._emit_handoff()
             else:
-                self.hooks.log_event("VALIDATION_PASSED", issues=0)
-                yield "✅ All artifacts pass validation — zero issues.\n\n"
+                # Phase 1 passed — now run Phase 2: LLM evaluator
+                self.hooks.log_event("DETERMINISTIC_PASSED", issues=0)
+                yield "✅ Deterministic checks passed. Running LLM evaluator...\n\n"
+
+                brief_text = ""
+                script_text = ""
+                brief_path = self.specs_dir / "01-brief.md"
+                script_path = self.specs_dir / "02-script.md"
+                if brief_path.exists():
+                    brief_text = brief_path.read_text()
+                if script_path.exists():
+                    script_text = script_path.read_text()
+
+                llm_issues = await self._llm_evaluator_pass(brief_text, script_text)
+                if llm_issues:
+                    self.hooks.log_event("LLM_EVALUATOR_ISSUES", count=len(llm_issues))
+                    yield f"⚠️ LLM evaluator found {len(llm_issues)} issue(s):\n"
+                    for issue in llm_issues:
+                        yield f"  • {issue}\n"
+                    yield "\n"
+                else:
+                    self.hooks.log_event("VALIDATION_PASSED", issues=0)
+                    yield "✅ All artifacts pass validation — zero issues.\n\n"
                 yield self._emit_handoff()
 
         self.hooks.log_event("RUN_COMPLETED", project=self.project_id)
@@ -219,15 +241,26 @@ class DirectorAgent:
                     yield message.result
 
         except ImportError:
-            # Fallback for environments without claude_agent_sdk
-            yield (
-                "⚠️ Claude Agent SDK not installed. "
-                "Running in standalone mode.\n\n"
-                f"**Received prompt ({len(prompt)} chars):**\n"
-                f"The Director would now process this through the "
-                f"7-category intake and generate all 3 artifacts.\n\n"
-                f"Install `claude-agent-sdk` for full async streaming.\n"
-            )
+            # Fallback: use Anthropic Messages API directly
+            try:
+                import anthropic
+                client = anthropic.Anthropic()
+                response = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=8192,
+                    system=DIRECTOR_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                for block in response.content:
+                    if hasattr(block, "text"):
+                        yield block.text
+            except ImportError:
+                yield (
+                    "⚠️ Neither `claude-agent-sdk` nor `anthropic` is installed.\n"
+                    "Install one:\n"
+                    "  pip install anthropic          # Direct API\n"
+                    "  pip install claude-agent-sdk   # Full agent loop\n"
+                )
 
     # ── Evaluator-Optimizer ───────────────────────────────────────────────
 
@@ -285,12 +318,12 @@ class DirectorAgent:
         ]
         lower = text.lower()
         matches = sum(1 for s in blueprint_signals if s in lower)
-        return matches >= 3
+        return matches >= 5  # Raised from 3 to avoid false positives
 
     def _artifacts_present(self) -> bool:
         """Check if all 3 required artifacts exist."""
         return all(
-            (SPECS_DIR / f).exists()
+            (self.specs_dir / f).exists()
             for f in ["01-brief.md", "02-script.md", "03-scene-map.json"]
         )
 

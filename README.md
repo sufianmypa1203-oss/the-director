@@ -144,8 +144,9 @@ The Director enforces **compile-time guarantees** on all video production artifa
 | Contract | Validates | On Failure |
 |----------|-----------|------------|
 | `SceneModel` | Frame math, word counts, Hick's Law, hook-not-logo | `ValidationError` |
-| `TransitionModel` | Narrative reason present (≥10 chars), no technique specs | `ValidationError` |
-| `SceneMapModel` | Total duration, scene continuity, all transitions, unique IDs | `ValidationError` |
+| `TransitionModel` | Narrative reason present (≥10 chars), no self-transitions | `ValidationError` |
+| `SceneMapModel` | Total duration, scene continuity, all transitions, unique IDs, version lock | `ValidationError` |
+| `ScriptModel` | Per-scene hero/sub/overlay/label word limits + cross-map validation | `ValidationError` |
 | `IntakeState` | 7/7 categories completed before generation | `is_complete() = False` |
 | `BriefModel` | Zero blank fields, valid dimensions, framework justification | `ValidationError` |
 
@@ -185,6 +186,11 @@ from src.director.models import SceneMapModel
 # Export JSON Schema for downstream tooling
 schema = SceneMapModel.model_json_schema()
 print(json.dumps(schema, indent=2))
+
+# Or export all schemas to files
+from src.director.tools import export_schemas
+result = export_schemas("schemas/")
+# Creates: scene-map.schema.json, brief.schema.json, script.schema.json
 ```
 
 ---
@@ -194,9 +200,11 @@ print(json.dumps(schema, indent=2))
 After generating all 3 artifacts, a **separate validation pass** runs:
 
 1. **Deterministic (Pydantic)** — Schema validation, frame math, word counts, continuity
-2. **LLM Evaluator** — Narrative coherence, hook compliance, reading speed
-3. **Optimizer** — If critical issues found → re-run generation with failure context
-4. **Gate** — Only when ALL checks pass → handoff block is emitted
+2. **Cross-reference** — Scene-map ↔ brief ↔ script alignment check
+3. **Reading speed** — Max 8 words per 3 seconds of screen time
+4. **LLM Evaluator** — Narrative coherence, hook compliance, semantic checks
+5. **Optimizer** — If critical issues found → re-run generation with failure context
+6. **Gate** — Only when ALL checks pass → handoff block is emitted
 
 ```python
 from src.director.validator import ArtifactValidator
@@ -286,18 +294,20 @@ python -m pytest tests/test_director.py::TestSceneModel -v
 
 ## 🔗 Pipeline Position
 
-The Director is **Agent 1 of 4** in the video production pipeline:
+The Director is **Agent 1 of 5** in the video production pipeline:
 
 ```mermaid
 flowchart LR
     A["🎬 /director"] --> B["🎨 /designer"]
     B --> C["⚡ /motion-architect"]
     C --> D["🔧 /builder"]
+    D --> E["🔍 /inspector"]
 
     style A fill:#e94560,stroke:#16213e,color:white,stroke-width:3px
     style B fill:#0f3460,stroke:#16213e,color:white
     style C fill:#533483,stroke:#16213e,color:white
     style D fill:#2b2d42,stroke:#16213e,color:white
+    style E fill:#1a1a2e,stroke:#e94560,color:white
 ```
 
 | Agent | Responsibility | Reads | Produces |
@@ -306,6 +316,7 @@ flowchart LR
 | `/designer` | Visual design, HTML prototypes | All 3 specs | Design spec + HTML prototypes per scene |
 | `/motion-architect` | Motion physics, springs, easing | Scene-map + design spec | Motion spec with spring constants |
 | `/builder` | `.tsx` code, Remotion composition | All upstream specs | Final production code |
+| `/inspector` | Quality audit against all specs | All artifacts + final output | Audit report + pass/fail |
 
 ---
 
@@ -322,8 +333,10 @@ These aren't suggestions. They're enforced by Pydantic validators that raise `Va
 | Hook ≠ logo | `SceneModel.hook_not_logo()` |
 | Contiguous scenes (no gaps) | `SceneMapModel.validate_scene_continuity()` |
 | All transitions present | `SceneMapModel.validate_all_transitions_present()` |
+| No self-referencing transitions | `SceneMapModel.validate_no_self_transitions()` |
 | Frame math exact | `durationFrames = endFrame - startFrame` |
 | Reading speed ≤ 8 words / 3s | `ArtifactValidator.validate_reading_speed()` |
+| Cross-reference alignment | `ArtifactValidator.validate_cross_references()` |
 
 ---
 

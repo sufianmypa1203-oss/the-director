@@ -130,27 +130,31 @@ class ArtifactValidator:
             return issues  # Already caught by artifacts_exist
 
         content = brief_path.read_text()
+        # Normalize: strip markdown bold/italic, case-insensitive
+        content_normalized = content.replace("**", "").replace("##", "").replace("#", "")
 
         # Check for common blank-field patterns
         required_sections = [
-            ("Topic:", "topic"),
-            ("Core message:", "core_message"),
-            ("Core emotion:", "core_emotion"),
-            ("Emotion arc:", "emotion_arc"),
-            ("Colors USE:", "brand_colors"),
-            ("HOOK STRATEGY:", "hook_strategy"),
-            ("CTA:", "cta"),
-            ("FRAMEWORK:", "framework"),
-            ("COMPOSITION NAME:", "composition_name"),
+            ("topic:", "topic"),
+            ("core message:", "core_message"),
+            ("core emotion:", "core_emotion"),
+            ("emotion arc:", "emotion_arc"),
+            ("colors use:", "brand_colors"),
+            ("hook strategy:", "hook_strategy"),
+            ("cta:", "cta"),
+            ("framework:", "framework"),
+            ("composition name:", "composition_name"),
         ]
 
+        content_lower = content_normalized.lower()
+
         for marker, field_name in required_sections:
-            if marker in content:
+            if marker in content_lower:
                 # Check if the line after the marker is empty or just whitespace
-                idx = content.index(marker)
-                line = content[idx:].split("\n")[0]
+                idx = content_lower.index(marker)
+                line = content_normalized[idx:].split("\n")[0]
                 value_part = line.split(":", 1)[1].strip() if ":" in line else ""
-                if not value_part or value_part in ("(none)", "TBD", "TODO", "[]"):
+                if not value_part or value_part.lower() in ("(none)", "tbd", "todo", "[]"):
                     issues.append(ValidationIssue(
                         severity="HIGH",
                         source="BRIEF",
@@ -313,7 +317,56 @@ class ArtifactValidator:
         all_issues.extend(self.validate_scene_map_schema())
         all_issues.extend(self.validate_reading_speed())
         all_issues.extend(self.validate_duration_distribution())
+        all_issues.extend(self.validate_cross_references())
         return all_issues
+
+    # ── Phase 7: Cross-Reference Validation (Upgrade 2) ───────────────────
+
+    def validate_cross_references(self) -> list[ValidationIssue]:
+        """
+        Cross-validates scene-map ↔ brief ↔ script artifacts.
+        Checks that scene IDs, composition name, and scene plans align.
+        """
+        issues: list[ValidationIssue] = []
+        scene_map_path = self.specs_dir / "03-scene-map.json"
+        brief_path = self.specs_dir / "01-brief.md"
+
+        if not scene_map_path.exists():
+            return issues
+
+        try:
+            raw = json.loads(scene_map_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return issues
+
+        scene_ids = [s.get("id", "") for s in raw.get("scenes", [])]
+        composition_name = raw.get("compositionName", "")
+
+        # Cross-check: brief composition name matches scene-map
+        if brief_path.exists():
+            brief_content = brief_path.read_text().lower()
+            if composition_name and composition_name.lower() not in brief_content:
+                issues.append(ValidationIssue(
+                    severity="MEDIUM",
+                    source="CROSS_REF",
+                    message=f"compositionName '{composition_name}' not found in brief",
+                    fix_hint="Ensure brief's Composition Name matches scene-map compositionName",
+                ))
+
+        # Cross-check: script references all scene IDs
+        script_path = self.specs_dir / "02-script.md"
+        if script_path.exists():
+            script_content = script_path.read_text().lower()
+            for sid in scene_ids:
+                if sid.lower() not in script_content and sid.replace("-", " ").lower() not in script_content:
+                    issues.append(ValidationIssue(
+                        severity="MEDIUM",
+                        source="CROSS_REF",
+                        message=f"Scene '{sid}' in scene-map but not referenced in script",
+                        fix_hint=f"Add {sid} section to 02-script.md",
+                    ))
+
+        return issues
 
     def has_critical_issues(self, issues: list[ValidationIssue]) -> bool:
         return any(i.severity == "CRITICAL" for i in issues)

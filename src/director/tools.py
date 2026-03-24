@@ -15,6 +15,7 @@ from .models import SceneMapModel, IntakeState, IntakeCategory
 from .validator import ArtifactValidator, ValidationIssue
 
 
+# Default specs directory — can be overridden via function args or DirectorAgent constructor
 SPECS_DIR = Path("specs")
 
 
@@ -68,7 +69,7 @@ def complete_intake_category(
 
 # ─── Artifact Tools ──────────────────────────────────────────────────────────
 
-def write_artifact(filename: str, content: str) -> dict[str, Any]:
+def write_artifact(filename: str, content: str, specs_dir: Path | None = None) -> dict[str, Any]:
     """
     Writes an artifact to the specs/ directory.
     Valid filenames: 01-brief.md, 02-script.md, 03-scene-map.json
@@ -76,6 +77,7 @@ def write_artifact(filename: str, content: str) -> dict[str, Any]:
     For scene-map.json, content must be valid JSON that passes
     SceneMapModel validation. The tool will reject invalid schemas.
     """
+    target_dir = specs_dir or SPECS_DIR
     valid_files = {"01-brief.md", "02-script.md", "03-scene-map.json"}
     if filename not in valid_files:
         return {
@@ -84,8 +86,8 @@ def write_artifact(filename: str, content: str) -> dict[str, Any]:
                      f"Valid: {valid_files}",
         }
 
-    SPECS_DIR.mkdir(exist_ok=True)
-    filepath = SPECS_DIR / filename
+    target_dir.mkdir(exist_ok=True)
+    filepath = target_dir / filename
 
     # Special handling for scene-map: validate BEFORE writing
     if filename == "03-scene-map.json":
@@ -120,7 +122,7 @@ def write_artifact(filename: str, content: str) -> dict[str, Any]:
 
 # ─── Validation Tools ────────────────────────────────────────────────────────
 
-def run_validation() -> dict[str, Any]:
+def run_validation(specs_dir: Path | None = None) -> dict[str, Any]:
     """
     Runs ALL deterministic validation passes on generated artifacts.
     Returns structured issues with severity, source, and fix hints.
@@ -128,7 +130,7 @@ def run_validation() -> dict[str, Any]:
     Call this BEFORE generating the handoff block.
     If any CRITICAL issues exist, handoff is blocked.
     """
-    validator = ArtifactValidator()
+    validator = ArtifactValidator(specs_dir=specs_dir or SPECS_DIR)
     issues = validator.run_all_deterministic()
 
     return {
@@ -141,16 +143,17 @@ def run_validation() -> dict[str, Any]:
     }
 
 
-# ─── Handoff Tools ───────────────────────────────────────────────────────────
+# ─── Handoff Tools ─────────────────────────────────────────────────────────────────
 
-def generate_handoff_block(project_id: str | None = None) -> dict[str, Any]:
+def generate_handoff_block(project_id: str | None = None, specs_dir: Path | None = None) -> dict[str, Any]:
     """
     Generates the handoff block for /designer.
     Will REFUSE to generate if validation has critical issues.
     Always run run_validation() first.
     """
+    target_dir = specs_dir or SPECS_DIR
     # Pre-flight check
-    validator = ArtifactValidator()
+    validator = ArtifactValidator(specs_dir=target_dir)
     issues = validator.run_all_deterministic()
 
     if validator.has_critical_issues(issues):
@@ -161,7 +164,7 @@ def generate_handoff_block(project_id: str | None = None) -> dict[str, Any]:
         }
 
     # Extract projectId from scene-map if not provided
-    scene_map_path = SPECS_DIR / "03-scene-map.json"
+    scene_map_path = target_dir / "03-scene-map.json"
     if scene_map_path.exists() and not project_id:
         data = json.loads(scene_map_path.read_text())
         project_id = data.get("projectId", "unknown")
@@ -178,7 +181,7 @@ def generate_handoff_block(project_id: str | None = None) -> dict[str, Any]:
 | **Project** | `{pid}` |
 | **Phase completed** | Director |
 | **Artifacts created** | `specs/01-brief.md`, `specs/02-script.md`, `specs/03-scene-map.json` |
-| **Validations passed** | ✅ 7-category intake ✅ brief complete ✅ script validated ✅ scene-map schema valid ✅ evaluator pass |
+| **Validations passed** | ✅ 7-category intake ✅ brief complete ✅ script validated ✅ scene-map schema valid ✅ evaluator pass ✅ cross-reference check |
 | **Unresolved risks** | {risks_text} |
 | **Next agent** | `/designer` |
 
@@ -199,7 +202,36 @@ def generate_handoff_block(project_id: str | None = None) -> dict[str, Any]:
     }
 
 
-# ─── Tool Registry ───────────────────────────────────────────────────────────
+# ─── Schema Export (Upgrade 4) ─────────────────────────────────────────────────
+
+def export_schemas(output_dir: str | Path = "schemas") -> dict[str, Any]:
+    """
+    Exports all Pydantic model JSON schemas to a schemas/ directory.
+    Downstream agents (Designer, Motion Architect) can validate against these.
+    """
+    from .models import BriefModel, ScriptModel
+
+    out = Path(output_dir)
+    out.mkdir(exist_ok=True)
+
+    schemas = {
+        "scene-map.schema.json": SceneMapModel.model_json_schema(),
+        "brief.schema.json": BriefModel.model_json_schema(),
+        "script.schema.json": ScriptModel.model_json_schema(),
+    }
+
+    for filename, schema in schemas.items():
+        filepath = out / filename
+        filepath.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+
+    return {
+        "success": True,
+        "schemas_exported": list(schemas.keys()),
+        "output_dir": str(out),
+    }
+
+
+# ─── Tool Registry ───────────────────────────────────────────────────────────────
 
 DIRECTOR_TOOLS = {
     "check_intake_status": check_intake_status,
@@ -207,4 +239,5 @@ DIRECTOR_TOOLS = {
     "write_artifact": write_artifact,
     "run_validation": run_validation,
     "generate_handoff_block": generate_handoff_block,
+    "export_schemas": export_schemas,
 }

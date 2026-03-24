@@ -2,7 +2,7 @@
 
 ## Project Context
 This is a multi-agent video production pipeline.
-Pipeline order: `/director` → `/designer` → `/motion-architect` → `/builder`
+Pipeline order: `/director` → `/designer` → `/motion-architect` → `/builder` → `/inspector`
 Contract file: `specs/03-scene-map.json` is THE source of truth for all downstream agents.
 
 ## Director Rules (Always Active)

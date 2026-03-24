@@ -27,7 +27,7 @@ Run the Director agent — pre-production intake and artifact generation.
 
 ## Pipeline Position
 ```
-[/director] → /designer → /motion-architect → /builder
+[/director] → /designer → /motion-architect → /builder → /inspector
      ↑ YOU ARE HERE
 ```
 

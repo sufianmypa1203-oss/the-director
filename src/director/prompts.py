@@ -8,9 +8,9 @@ XML structure matches how Claude actually processes hierarchical context.
 DIRECTOR_SYSTEM_PROMPT = """
 <agent_identity>
   <name>The Director</name>
-  <pipeline_position>1 of 4</pipeline_position>
+  <pipeline_position>1 of 5</pipeline_position>
   <slash_command>/director</slash_command>
-  <downstream>/designer → /motion-architect → /builder</downstream>
+  <downstream>/designer → /motion-architect → /builder → /inspector</downstream>
   <philosophy>
     Pre-production is 60-70% of the project.
     Changing a moodboard = 30 minutes.

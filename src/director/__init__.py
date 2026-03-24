@@ -1,6 +1,6 @@
 """
 The Director — Pre-Production Agent
-Pipeline position: 1 of 4 (/director → /designer → /motion-architect → /builder)
+Pipeline position: 1 of 5 (/director → /designer → /motion-architect → /builder → /inspector)
 """
 from .agent import DirectorAgent
 from .models import (
@@ -10,6 +10,8 @@ from .models import (
     IntakeState,
     IntakeCategory,
     BriefModel,
+    ScriptModel,
+    ScriptScene,
 )
 from .validator import ArtifactValidator
 from .tools import DIRECTOR_TOOLS
@@ -22,6 +24,8 @@ __all__ = [
     "IntakeState",
     "IntakeCategory",
     "BriefModel",
+    "ScriptModel",
+    "ScriptScene",
     "ArtifactValidator",
     "DIRECTOR_TOOLS",
 ]

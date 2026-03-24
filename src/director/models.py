@@ -9,6 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated
 from pydantic import BaseModel, Field, field_validator, model_validator
+from datetime import datetime, timezone
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -193,6 +194,9 @@ class SceneMapModel(BaseModel):
     framework:       Framework
     scenes:          list[SceneModel] = Field(min_length=1)
     transitions:     list[TransitionModel]
+    version:         int = Field(default=1, ge=1, description="Schema version for downstream staleness detection")
+    generatedAt:     str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="ISO timestamp")
+    generatedBy:     str = Field(default="director", description="Agent that generated this artifact")
 
     @model_validator(mode="after")
     def validate_total_duration(self) -> "SceneMapModel":
@@ -249,6 +253,17 @@ class SceneMapModel(BaseModel):
             raise ValueError(f"Duplicate scene IDs found: {set(dupes)}")
         return self
 
+    @model_validator(mode="after")
+    def validate_no_self_transitions(self) -> "SceneMapModel":
+        """A scene cannot transition to itself."""
+        for t in self.transitions:
+            if t.from_scene == t.to_scene:
+                raise ValueError(
+                    f"Self-referencing transition: {t.from_scene} → {t.to_scene}. "
+                    f"Transitions must connect two different scenes."
+                )
+        return self
+
     # ── Export Methods ────────────────────────────────────────────────────
 
     @classmethod
@@ -271,10 +286,6 @@ class SceneMapModel(BaseModel):
             subText="Supporting details here",
             prototypeFile="Scene1_Example.html", maxInfoItems=2,
         )
-        transition = TransitionModel(**{
-            "from": "scene-1", "to": "scene-1",
-            "narrativeReason": "This is a single-scene example — no real transition",
-        })
         return cls(
             projectId="example-project",
             compositionName="ExampleProject",
@@ -283,7 +294,7 @@ class SceneMapModel(BaseModel):
             narrativeArc="shock-build-resolve",
             framework="PAS",
             scenes=[scene],
-            transitions=[],
+            transitions=[],  # Single-scene — no transitions needed
         )
 
 
@@ -363,3 +374,84 @@ class BriefModel(BaseModel):
     hard_constraints_include: list[str] = Field(default_factory=list)
     hard_constraints_avoid:   list[str] = Field(default_factory=list)
     compliance:            str | None = None
+
+
+# ─── Script Model (02-script.md validation) ──────────────────────────────────
+
+class ScriptScene(BaseModel):
+    """A single scene's text content in the script."""
+    scene_id:   str = Field(pattern=r"^scene-\d+$")
+    hero_text:  str = Field(min_length=1, description="Main text, ≤7 words")
+    sub_text:   str = Field(default="", description="Supporting text, ≤12 words")
+    frame_range: str = Field(pattern=r"^\d+[–-]\d+$", description="e.g. '0–90'")
+    overlay:    str | None = Field(default=None, description="≤5 words if present")
+    labels:     list[str] = Field(default_factory=list, description="≤4 words each")
+
+    @field_validator("hero_text")
+    @classmethod
+    def hero_within_limit(cls, v: str) -> str:
+        wc = len(v.split())
+        if wc > 7:
+            raise ValueError(f"Hero text is {wc} words (max 7): '{v}'")
+        return v
+
+    @field_validator("sub_text")
+    @classmethod
+    def sub_within_limit(cls, v: str) -> str:
+        if not v:
+            return v
+        wc = len(v.split())
+        if wc > 12:
+            raise ValueError(f"Sub text is {wc} words (max 12): '{v}'")
+        return v
+
+    @field_validator("overlay")
+    @classmethod
+    def overlay_within_limit(cls, v: str | None) -> str | None:
+        if v and len(v.split()) > 5:
+            raise ValueError(f"Overlay is {len(v.split())} words (max 5): '{v}'")
+        return v
+
+    @field_validator("labels")
+    @classmethod
+    def labels_within_limit(cls, v: list[str]) -> list[str]:
+        for label in v:
+            if len(label.split()) > 4:
+                raise ValueError(f"Label is {len(label.split())} words (max 4): '{label}'")
+        return v
+
+
+class ScriptModel(BaseModel):
+    """
+    Validates the full script structure.
+    Every scene in the scene-map must have a matching ScriptScene.
+    """
+    scenes: list[ScriptScene] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_scene_ids(self) -> "ScriptModel":
+        ids = [s.scene_id for s in self.scenes]
+        if len(ids) != len(set(ids)):
+            dupes = [sid for sid in ids if ids.count(sid) > 1]
+            raise ValueError(f"Duplicate scene IDs in script: {set(dupes)}")
+        return self
+
+    def cross_validate_scene_map(self, scene_map: SceneMapModel) -> list[str]:
+        """
+        Upgrade 2: Cross-validate script scene IDs against scene-map.
+        Returns list of discrepancy messages (empty = all good).
+        """
+        script_ids = {s.scene_id for s in self.scenes}
+        map_ids = {s.id for s in scene_map.scenes}
+
+        issues: list[str] = []
+        missing_in_script = map_ids - script_ids
+        extra_in_script = script_ids - map_ids
+
+        if missing_in_script:
+            issues.append(f"Scenes in scene-map but missing from script: {missing_in_script}")
+        if extra_in_script:
+            issues.append(f"Scenes in script but missing from scene-map: {extra_in_script}")
+
+        return issues
+

@@ -310,7 +310,147 @@ class TestReadingSpeed:
         assert len(scene.subText.split()) == 12
 
 
+# ─── Self-Transition Validator Tests ─────────────────────────────────────────
+
+class TestSelfTransitions:
+    """Fix 2: Self-referencing transitions must be rejected."""
+
+    def test_self_transition_rejected(self):
+        """scene-1 → scene-1 must raise ValidationError."""
+        data = make_scene_map()
+        # Include the required normal transition PLUS a self-referencing one
+        data["transitions"] = [
+            {"from": "scene-1", "to": "scene-2", "narrativeReason": "Normal transition to next scene"},
+            {"from": "scene-1", "to": "scene-1", "narrativeReason": "This is a self-loop test transition"},
+        ]
+        with pytest.raises(ValidationError, match="Self-referencing transition"):
+            SceneMapModel(**data)
+
+    def test_normal_transition_allowed(self):
+        """scene-1 → scene-2 should pass normally."""
+        data = make_scene_map()
+        sm = SceneMapModel(**data)
+        assert len(sm.transitions) == 1
+
+
+# ─── Version Locking Tests (Upgrade 3) ──────────────────────────────────────
+
+class TestVersionLocking:
+    """Upgrade 3: SceneMapModel has version, generatedAt, generatedBy."""
+
+    def test_version_defaults(self):
+        data = make_scene_map()
+        sm = SceneMapModel(**data)
+        assert sm.version == 1
+        assert sm.generatedBy == "director"
+        assert sm.generatedAt  # Non-empty ISO string
+
+    def test_custom_version(self):
+        data = make_scene_map()
+        data["version"] = 2
+        data["generatedBy"] = "re-director"
+        sm = SceneMapModel(**data)
+        assert sm.version == 2
+        assert sm.generatedBy == "re-director"
+
+
+# ─── ScriptModel Tests (Upgrade 1) ──────────────────────────────────────────
+
+class TestScriptModel:
+    """Upgrade 1: ScriptModel with per-scene Pydantic validation."""
+
+    def test_valid_script(self):
+        from director.models import ScriptModel, ScriptScene
+        script = ScriptModel(scenes=[
+            ScriptScene(scene_id="scene-1", hero_text="Lost money", sub_text="Where it goes", frame_range="0–120"),
+            ScriptScene(scene_id="scene-2", hero_text="Save now", sub_text="Act fast", frame_range="120–240"),
+        ])
+        assert len(script.scenes) == 2
+
+    def test_hero_too_long(self):
+        from director.models import ScriptScene
+        with pytest.raises(ValidationError, match="max 7"):
+            ScriptScene(
+                scene_id="scene-1",
+                hero_text="one two three four five six seven eight",
+                frame_range="0–120",
+            )
+
+    def test_sub_too_long(self):
+        from director.models import ScriptScene
+        with pytest.raises(ValidationError, match="max 12"):
+            ScriptScene(
+                scene_id="scene-1",
+                hero_text="Valid hero",
+                sub_text="one two three four five six seven eight nine ten eleven twelve thirteen",
+                frame_range="0–120",
+            )
+
+    def test_duplicate_scene_ids_in_script(self):
+        from director.models import ScriptModel, ScriptScene
+        with pytest.raises(ValidationError, match="Duplicate"):
+            ScriptModel(scenes=[
+                ScriptScene(scene_id="scene-1", hero_text="First", frame_range="0–120"),
+                ScriptScene(scene_id="scene-1", hero_text="Dupe", frame_range="120–240"),
+            ])
+
+    def test_cross_validate_catches_mismatch(self):
+        from director.models import ScriptModel, ScriptScene
+        script = ScriptModel(scenes=[
+            ScriptScene(scene_id="scene-1", hero_text="Test", frame_range="0–120"),
+            ScriptScene(scene_id="scene-3", hero_text="Wrong", frame_range="120–240"),
+        ])
+        sm = SceneMapModel(**make_scene_map())
+        issues = script.cross_validate_scene_map(sm)
+        assert len(issues) == 2  # scene-2 missing, scene-3 extra
+
+
+# ─── Blueprint Threshold Tests (Fix 5) ──────────────────────────────────────
+
+class TestBlueprintThreshold:
+    """Fix 5: Blueprint threshold raised from 3 to 5."""
+
+    def test_low_signals_no_blueprint(self):
+        from director.agent import DirectorAgent
+        agent = DirectorAgent()
+        text = "I want a platform: TikTok, duration: 15s video about my brand identity"
+        # Only 3 signals — should NOT trigger blueprint mode
+        assert agent._looks_like_blueprint(text) is False
+
+    def test_high_signals_is_blueprint(self):
+        from director.agent import DirectorAgent
+        agent = DirectorAgent()
+        text = (
+            "core message: save money. brand identity: modern. target audience: millennials. "
+            "platform: TikTok. duration: 15s. color palette: blue/green. hook strategy: pain point. "
+            "emotion arc: fear→relief. scene plan: 3 scenes."
+        )
+        # 9 signals — should trigger blueprint mode
+        assert agent._looks_like_blueprint(text) is True
+
+
+# ─── Schema Export Tests (Upgrade 4) ─────────────────────────────────────────
+
+class TestSchemaFileExport:
+    """Upgrade 4: export_schemas writes JSON schema files."""
+
+    def test_export_creates_files(self, tmp_path):
+        from director.tools import export_schemas
+        result = export_schemas(tmp_path / "schemas")
+        assert result["success"]
+        assert "scene-map.schema.json" in result["schemas_exported"]
+        assert "brief.schema.json" in result["schemas_exported"]
+        assert "script.schema.json" in result["schemas_exported"]
+        # Verify files exist and contain valid JSON
+        for fname in result["schemas_exported"]:
+            fpath = tmp_path / "schemas" / fname
+            assert fpath.exists()
+            data = json.loads(fpath.read_text())
+            assert "properties" in data or "title" in data
+
+
 # ─── Run ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
